@@ -4,173 +4,158 @@
 <meta charset="UTF-8">
 <title>Action RPG 2D</title>
 <style>
-  canvas {
-    background: #111;
-    display: block;
-    margin: 0 auto;
-    image-rendering: pixelated;
-  }
-  body { text-align: center; color: #eee; font-family: sans-serif; }
+  canvas { background:#111; display:block; margin:0 auto; image-rendering:pixelated; }
+  body { text-align:center; color:#eee; font-family:sans-serif; }
+  #inventory { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.8); padding:20px; display:none; }
+  #overlay { position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; color:#fff; background:rgba(0,0,0,0.7); }
 </style>
 </head>
 <body>
 <canvas id="game" width="800" height="600"></canvas>
+<div id="inventory"></div>
+<div id="overlay"></div>
 <script>
-class Entity {
-  constructor(x, y, size, color) {
-    this.x = x;
-    this.y = y;
-    this.size = size;
-    this.color = color;
-    this.vx = 0;
-    this.vy = 0;
-    this.hp = 1;
-  }
-  draw(ctx) {
-    ctx.fillStyle = this.color;
-    ctx.fillRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
-  }
-}
-
-class Player extends Entity {
-  constructor(x, y) {
-    super(x, y, 24, '#4af');
-    this.hp = 100;
-    this.loot = 0;
-  }
-  handleInput(keys) {
-    const speed = 150;
-    this.vx = 0;
-    this.vy = 0;
-    if (keys['ArrowUp']) this.vy = -speed;
-    if (keys['ArrowDown']) this.vy = speed;
-    if (keys['ArrowLeft']) this.vx = -speed;
-    if (keys['ArrowRight']) this.vx = speed;
-  }
-  update(dt, map) {
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
-    // keep inside map
-    this.x = Math.max(this.size/2, Math.min(map.width - this.size/2, this.x));
-    this.y = Math.max(this.size/2, Math.min(map.height - this.size/2, this.y));
-  }
-}
-
-class Enemy extends Entity {
-  constructor(x, y) {
-    super(x, y, 20, '#f44');
-    this.hp = 30;
-  }
-  update(dt, game) {
-    const dx = game.player.x - this.x;
-    const dy = game.player.y - this.y;
-    const len = Math.hypot(dx, dy);
-    const speed = 60;
-    if (len > 0) {
-      this.vx = (dx / len) * speed;
-      this.vy = (dy / len) * speed;
-    }
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
-  }
-}
-
-class Loot extends Entity {
-  constructor(x, y) {
-    super(x, y, 10, '#ff0');
-  }
-}
-
-class GameMap {
-  constructor(width, height) {
-    this.width = width;
-    this.height = height;
-    this.walls = [];
-    this.generate();
-  }
-  generate() {
-    // simple random walls
-    for (let i = 0; i < 60; i++) {
-      const x = Math.random() * this.width;
-      const y = Math.random() * this.height;
-      const size = 30 + Math.random() * 40;
-      this.walls.push({x, y, size});
-    }
-  }
-  draw(ctx) {
-    ctx.fillStyle = '#333';
-    for (const w of this.walls) {
-      ctx.fillRect(w.x - w.size/2, w.y - w.size/2, w.size, w.size);
-    }
-  }
-}
-
-class Game {
-  constructor() {
-    this.canvas = document.getElementById('game');
-    this.ctx = this.canvas.getContext('2d');
-    this.map = new GameMap(this.canvas.width, this.canvas.height);
-    this.player = new Player(400, 300);
-    this.enemies = [];
-    this.loot = [];
-    this.keys = {};
-    this.lastTime = 0;
-    this.spawnEnemy();
-    window.addEventListener('keydown', e => this.keys[e.key] = true);
-    window.addEventListener('keyup', e => this.keys[e.key] = false);
-    requestAnimationFrame(t => this.loop(t));
-  }
-  spawnEnemy() {
-    for (let i = 0; i < 5; i++) {
-      const x = Math.random() * this.canvas.width;
-      const y = Math.random() * this.canvas.height;
-      this.enemies.push(new Enemy(x, y));
-    }
-  }
-  update(dt) {
-    this.player.handleInput(this.keys);
-    this.player.update(dt, this.map);
-    for (const e of this.enemies) {
-      e.update(dt, this);
-      // collision with player
-      if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < (e.size + this.player.size)/2) {
-        this.player.hp -= 20 * dt;
-      }
-      if (e.hp <= 0) {
-        this.loot.push(new Loot(e.x, e.y));
+class TileMap {
+  constructor(w,h,tile){
+    this.w=w; this.h=h; this.tile=tile;
+    this.grid=[];
+    for(let y=0;y<h;y++){
+      this.grid[y]=[];
+      for(let x=0;x<w;x++){
+        this.grid[y][x] = Math.random()<0.1?1:0; // 1=wall
       }
     }
-    // remove dead enemies
-    this.enemies = this.enemies.filter(e => e.hp > 0);
-    // pickup loot
-    this.loot = this.loot.filter(l => {
-      if (Math.hypot(l.x - this.player.x, l.y - this.player.y) < (l.size + this.player.size)/2) {
-        this.player.loot++;
-        return false;
+  }
+  isWall(x,y){
+    if(x<0||y<0||x>=this.w||y>=this.h) return true;
+    return this.grid[y][x]===1;
+  }
+  draw(ctx,camX,camY){
+    for(let y=0;y<this.h;y++){
+      for(let x=0;x<this.w;x++){
+        if(this.grid[y][x]===1){
+          ctx.fillStyle="#333";
+          ctx.fillRect(x*this.tile - camX, y*this.tile - camY, this.tile, this.tile);
+        }
       }
-      return true;
-    });
+    }
   }
-  draw() {
-    const ctx = this.ctx;
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.map.draw(ctx);
-    this.player.draw(ctx);
-    for (const e of this.enemies) e.draw(ctx);
-    for (const l of this.loot) l.draw(ctx);
-    ctx.fillStyle = '#fff';
-    ctx.fillText('HP: ' + Math.floor(this.player.hp), 10, 20);
-    ctx.fillText('Loot: ' + this.player.loot, 10, 40);
-  }
-  loop(t) {
-    const dt = (t - this.lastTime) / 1000;
-    this.lastTime = t;
-    this.update(dt);
-    this.draw();
-    requestAnimationFrame(t => this.loop(t));
+  drawMini(ctx,x,y,size){
+    const sx=size/this.w;
+    const sy=size/this.h;
+    ctx.fillStyle="#222";ctx.fillRect(x,y,size,size);
+    for(let j=0;j<this.h;j++){
+      for(let i=0;i<this.w;i++){
+        if(this.grid[j][i]===1){
+          ctx.fillStyle="#555";
+          ctx.fillRect(x+i*sx,y+j*sy,sx,sy);
+        }
+      }
+    }
   }
 }
-
+class Entity{
+  constructor(x,y,size,color){this.x=x;this.y=y;this.size=size;this.color=color;this.vx=0;this.vy=0;this.hp=1;}
+  draw(ctx,camX,camY){
+    ctx.fillStyle=this.color;
+    ctx.fillRect(this.x-this.size/2 - camX, this.y-this.size/2 - camY, this.size,this.size);
+  }
+}
+class Player extends Entity{
+  constructor(x,y){ super(x,y,24,"#4af"); this.hp=100; this.loot=0; this.cooldown=0; }
+  handle(keys){
+    const s=150; this.vx=this.vy=0;
+    if(keys["ArrowUp"])this.vy=-s;
+    if(keys["ArrowDown"])this.vy=s;
+    if(keys["ArrowLeft"])this.vx=-s;
+    if(keys["ArrowRight"])this.vx=s;
+  }
+  update(dt,map){
+    let nx=this.x+this.vx*dt; let ny=this.y+this.vy*dt;
+    const t=map.tile;
+    const tx=Math.floor(nx/t); const ty=Math.floor(this.y/t);
+    if(!map.isWall(tx,ty)&&!map.isWall(Math.floor((nx+this.size/2)/t),ty)&&!map.isWall(Math.floor((nx-this.size/2)/t),ty)) this.x=nx;
+    nx=this.x; const ty2=Math.floor(ny/t);
+    if(!map.isWall(Math.floor(nx/t),ty2)&&!map.isWall(Math.floor(nx/t),Math.floor((ny+this.size/2)/t))&&!map.isWall(Math.floor(nx/t),Math.floor((ny-this.size/2)/t))) this.y=ny;
+    if(this.cooldown>0) this.cooldown-=dt;
+  }
+}
+class Enemy extends Entity{
+  constructor(x,y,type="chaser"){ super(x,y,20,"#f44"); this.hp=30; this.type=type; this.dir=1; }
+  update(dt,game){
+    if(this.type=="chaser"){
+      const dx=game.player.x-this.x, dy=game.player.y-this.y; const len=Math.hypot(dx,dy); const s=60;
+      if(len>0){this.vx=dx/len*s; this.vy=dy/len*s;}
+    } else if(this.type=="patrol"){
+      this.vx=40*this.dir; this.vy=0; if(game.map.isWall(Math.floor((this.x+this.vx*dt)/game.map.tile),Math.floor(this.y/game.map.tile))) this.dir*=-1;
+    }
+    this.x+=this.vx*dt; this.y+=this.vy*dt;
+  }
+}
+class Projectile extends Entity{
+  constructor(x,y,vx,vy){ super(x,y,6,"#ff0"); this.vx=vx; this.vy=vy; this.life=1; }
+  update(dt,map){
+    this.x+=this.vx*dt; this.y+=this.vy*dt; this.life-=dt;
+    if(map.isWall(Math.floor(this.x/map.tile),Math.floor(this.y/map.tile))) this.life=0;
+  }
+}
+class Loot extends Entity{ constructor(x,y){super(x,y,10,"#fd0");}}
+class Game{
+  constructor(){
+    this.canvas=document.getElementById("game");
+    this.ctx=this.canvas.getContext("2d");
+    this.state="menu";
+    this.map=new TileMap(50,50,32);
+    this.player=new Player(100,100);
+    this.enemies=[]; this.projectiles=[]; this.loot=[];
+    this.keys={};
+    this.last=0; this.camX=0; this.camY=0; this.wave=1; this.spawnTimer=0;
+    this.inv=document.getElementById("inventory");
+    this.overlay=document.getElementById("overlay");
+    window.addEventListener("keydown",e=>{this.keys[e.key]=true;});
+    window.addEventListener("keyup",e=>{this.keys[e.key]=false;});
+    requestAnimationFrame(t=>this.loop(t));
+    this.showMenu();
+  }
+  showMenu(){ this.overlay.innerHTML="<h1>Action RPG</h1><p>Appuyez sur Entrée</p>"; }
+  start(){ this.overlay.innerHTML=""; this.state="play"; }
+  pause(){ this.state="pause"; this.overlay.innerHTML="<h1>Pause</h1><p>P pour reprendre</p>"; }
+  gameOver(){ this.state="over"; this.overlay.innerHTML="<h1>Game Over</h1><p>R pour rejouer</p>"; }
+  toggleInv(){ this.inv.style.display=this.inv.style.display==="block"?"none":"block"; this.inv.innerHTML=`Loot : ${this.player.loot}`; }
+  spawnWave(){ for(let i=0;i<this.wave;i++){ const x=Math.random()*this.map.w*this.map.tile; const y=Math.random()*this.map.h*this.map.tile; const type=Math.random()<0.5?"chaser":"patrol"; this.enemies.push(new Enemy(x,y,type)); } this.wave++; }
+  update(dt){
+    if(this.state!=="play") return;
+    if(this.keys["p"]) { this.keys["p"]=false; this.pause(); return; }
+    if(this.keys["i"]) { this.keys["i"]=false; this.toggleInv(); }
+    this.player.handle(this.keys); this.player.update(dt,this.map);
+    if(this.keys[" "] && this.player.cooldown<=0){ const a=Math.atan2(this.player.vy,this.player.vx)||0; const vx=Math.cos(a)*300, vy=Math.sin(a)*300; this.projectiles.push(new Projectile(this.player.x,this.player.y,vx,vy)); this.player.cooldown=0.5; }
+    for(const p of this.projectiles){ p.update(dt,this.map); }
+    this.projectiles=this.projectiles.filter(p=>p.life>0);
+    for(const e of this.enemies){ e.update(dt,this); if(Math.hypot(e.x-this.player.x,e.y-this.player.y)<(e.size+this.player.size)/2){ this.player.hp-=20*dt; }
+      for(const pr of this.projectiles){ if(Math.hypot(pr.x-e.x,pr.y-e.y)<(pr.size+e.size)/2){ e.hp-=20; pr.life=0; } }
+      if(e.hp<=0){ this.loot.push(new Loot(e.x,e.y)); }
+    }
+    this.enemies=this.enemies.filter(e=>e.hp>0);
+    this.loot=this.loot.filter(l=>{ if(Math.hypot(l.x-this.player.x,l.y-this.player.y)<(l.size+this.player.size)/2){ this.player.loot++; return false;} return true; });
+    if(this.player.hp<=0) this.gameOver();
+    this.spawnTimer+=dt; if(this.spawnTimer>5){ this.spawnTimer=0; this.spawnWave(); }
+    this.camX=this.player.x-this.canvas.width/2; this.camY=this.player.y-this.canvas.height/2;
+  }
+  draw(){
+    const ctx=this.ctx; ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+    this.map.draw(ctx,this.camX,this.camY);
+    for(const l of this.loot) l.draw(ctx,this.camX,this.camY);
+    for(const p of this.projectiles) p.draw(ctx,this.camX,this.camY);
+    for(const e of this.enemies) e.draw(ctx,this.camX,this.camY);
+    this.player.draw(ctx,this.camX,this.camY);
+    ctx.fillStyle="#f00"; ctx.fillRect(10,10,200,10); ctx.fillStyle="#0f0"; ctx.fillRect(10,10,200*(this.player.hp/100),10);
+    ctx.fillStyle="#fff"; ctx.fillText(`Loot: ${this.player.loot}`,10,40);
+    this.map.drawMini(ctx,this.canvas.width-160,10,150);
+    ctx.fillStyle="#0ff"; ctx.fillRect(this.canvas.width-160+150*(this.player.x/(this.map.w*this.map.tile))-2,10+150*(this.player.y/(this.map.h*this.map.tile))-2,4,4);
+    ctx.fillStyle="#f44"; for(const e of this.enemies){ ctx.fillRect(this.canvas.width-160+150*(e.x/(this.map.w*this.map.tile))-2,10+150*(e.y/(this.map.h*this.map.tile))-2,4,4); }
+  }
+  loop(t){ const dt=(t-this.last)/1000; this.last=t; if(this.keys["Enter"]&&this.state==="menu"){ this.keys["Enter"]=false; this.start(); } if(this.state==="pause"&&this.keys["p"]){ this.keys["p"]=false; this.overlay.innerHTML=""; this.state="play"; } if(this.state==="over"&&this.keys["r"]){ location.reload(); } this.update(dt); this.draw(); requestAnimationFrame(t=>this.loop(t)); }
+}
 new Game();
 </script>
 </body>
