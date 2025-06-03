@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Action RPG 2D</title>
+<style>
+  canvas {
+    background: #111;
+    display: block;
+    margin: 0 auto;
+    image-rendering: pixelated;
+  }
+  body { text-align: center; color: #eee; font-family: sans-serif; }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="600"></canvas>
+<script>
+class Entity {
+  constructor(x, y, size, color) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.color = color;
+    this.vx = 0;
+    this.vy = 0;
+    this.hp = 1;
+  }
+  draw(ctx) {
+    ctx.fillStyle = this.color;
+    ctx.fillRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+  }
+}
+
+class Player extends Entity {
+  constructor(x, y) {
+    super(x, y, 24, '#4af');
+    this.hp = 100;
+    this.loot = 0;
+  }
+  handleInput(keys) {
+    const speed = 150;
+    this.vx = 0;
+    this.vy = 0;
+    if (keys['ArrowUp']) this.vy = -speed;
+    if (keys['ArrowDown']) this.vy = speed;
+    if (keys['ArrowLeft']) this.vx = -speed;
+    if (keys['ArrowRight']) this.vx = speed;
+  }
+  update(dt, map) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    // keep inside map
+    this.x = Math.max(this.size/2, Math.min(map.width - this.size/2, this.x));
+    this.y = Math.max(this.size/2, Math.min(map.height - this.size/2, this.y));
+  }
+}
+
+class Enemy extends Entity {
+  constructor(x, y) {
+    super(x, y, 20, '#f44');
+    this.hp = 30;
+  }
+  update(dt, game) {
+    const dx = game.player.x - this.x;
+    const dy = game.player.y - this.y;
+    const len = Math.hypot(dx, dy);
+    const speed = 60;
+    if (len > 0) {
+      this.vx = (dx / len) * speed;
+      this.vy = (dy / len) * speed;
+    }
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+  }
+}
+
+class Loot extends Entity {
+  constructor(x, y) {
+    super(x, y, 10, '#ff0');
+  }
+}
+
+class GameMap {
+  constructor(width, height) {
+    this.width = width;
+    this.height = height;
+    this.walls = [];
+    this.generate();
+  }
+  generate() {
+    // simple random walls
+    for (let i = 0; i < 60; i++) {
+      const x = Math.random() * this.width;
+      const y = Math.random() * this.height;
+      const size = 30 + Math.random() * 40;
+      this.walls.push({x, y, size});
+    }
+  }
+  draw(ctx) {
+    ctx.fillStyle = '#333';
+    for (const w of this.walls) {
+      ctx.fillRect(w.x - w.size/2, w.y - w.size/2, w.size, w.size);
+    }
+  }
+}
+
+class Game {
+  constructor() {
+    this.canvas = document.getElementById('game');
+    this.ctx = this.canvas.getContext('2d');
+    this.map = new GameMap(this.canvas.width, this.canvas.height);
+    this.player = new Player(400, 300);
+    this.enemies = [];
+    this.loot = [];
+    this.keys = {};
+    this.lastTime = 0;
+    this.spawnEnemy();
+    window.addEventListener('keydown', e => this.keys[e.key] = true);
+    window.addEventListener('keyup', e => this.keys[e.key] = false);
+    requestAnimationFrame(t => this.loop(t));
+  }
+  spawnEnemy() {
+    for (let i = 0; i < 5; i++) {
+      const x = Math.random() * this.canvas.width;
+      const y = Math.random() * this.canvas.height;
+      this.enemies.push(new Enemy(x, y));
+    }
+  }
+  update(dt) {
+    this.player.handleInput(this.keys);
+    this.player.update(dt, this.map);
+    for (const e of this.enemies) {
+      e.update(dt, this);
+      // collision with player
+      if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < (e.size + this.player.size)/2) {
+        this.player.hp -= 20 * dt;
+      }
+      if (e.hp <= 0) {
+        this.loot.push(new Loot(e.x, e.y));
+      }
+    }
+    // remove dead enemies
+    this.enemies = this.enemies.filter(e => e.hp > 0);
+    // pickup loot
+    this.loot = this.loot.filter(l => {
+      if (Math.hypot(l.x - this.player.x, l.y - this.player.y) < (l.size + this.player.size)/2) {
+        this.player.loot++;
+        return false;
+      }
+      return true;
+    });
+  }
+  draw() {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.map.draw(ctx);
+    this.player.draw(ctx);
+    for (const e of this.enemies) e.draw(ctx);
+    for (const l of this.loot) l.draw(ctx);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('HP: ' + Math.floor(this.player.hp), 10, 20);
+    ctx.fillText('Loot: ' + this.player.loot, 10, 40);
+  }
+  loop(t) {
+    const dt = (t - this.lastTime) / 1000;
+    this.lastTime = t;
+    this.update(dt);
+    this.draw();
+    requestAnimationFrame(t => this.loop(t));
+  }
+}
+
+new Game();
+</script>
+</body>
+</html>

@@ -1,12 +1,12 @@
 # JeuPython
 
-Ce dépôt propose une ébauche de jeu d'action-RPG 2D en Python.
-Le fichier `game_skeleton.py` fournit une architecture modulaire avec :
+Cette archive contient deux versions d'un petit jeu d'action‑RPG 2D :
 
-- Gestion des assets (images, sons)
-- Entités `Player` et `Enemy`
-- Génération procédurale basique de donjons
-- Interface HUD affichant la santé du joueur
-- Boucle principale simple
+1. **game_skeleton.py** – une ébauche en Python basée sur `pygame` qui illustre
+   une architecture modulaire (gestion des assets, entités, génération de donjon
+   simplifiée et boucle principale).
+2. **index.html** – une version jouable directement dans le navigateur. Tout est
+   contenu dans un seul fichier et propose un jeu plus complet avec génération
+   de niveaux, combats en temps réel et système de loot.
 
-Le projet repose sur `pygame` et sert de point de départ pour un jeu complet.
+L'exemple HTML peut être ouvert dans n'importe quel navigateur moderne.
